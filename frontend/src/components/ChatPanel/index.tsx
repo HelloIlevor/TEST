@@ -1,84 +1,50 @@
-import { Button } from 'antd'
+import { useEffect, useRef } from 'react'
 
 import { Panel } from '../../layout/AppLayout'
-import type { StreamEvent } from '../../types/events'
+import { useChatStore, useCurrentMessages } from '../../store/useChatStore'
+import { Composer } from './Composer'
+import { MessageItem } from './MessageItem'
 
-type Scenario = 'bar' | 'line' | 'retry'
+export function ChatPanel() {
+  const messages = useCurrentMessages()
+  const streaming = useChatStore((state) => state.streaming)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const pinnedToBottom = useRef(true)
 
-interface ChatPanelProps {
-  events: StreamEvent[]
-  running: boolean
-  onRun: (scenario: Scenario) => void
-  onAbort: () => void
-  onClear: () => void
-}
+  // 只在用户本来就贴着底部时才自动滚，否则会把正在回看历史的人一把拽走
+  useEffect(() => {
+    const node = bodyRef.current
+    if (!node || !pinnedToBottom.current) return
+    node.scrollTop = node.scrollHeight
+  }, [messages, streaming])
 
-function describe(event: StreamEvent): string {
-  switch (event.type) {
-    case 'stage':
-      return `${event.stage} — ${event.label}`
-    case 'sql':
-      return event.sql.replace(/\s+/g, ' ').slice(0, 90) + '…'
-    case 'rows':
-      return `${event.columns.join(' | ')}  共 ${event.row_count} 行`
-    case 'chart':
-      return `chart_type = ${event.chart_type}`
-    case 'token':
-      return event.text
-    case 'error':
-      return `[${event.code}] ${event.message}${event.recoverable ? '（可恢复，将重试）' : ''}`
-    case 'done':
-      return `耗时 ${event.elapsed_ms} ms`
+  const handleScroll = () => {
+    const node = bodyRef.current
+    if (!node) return
+    pinnedToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80
   }
-}
-
-/**
- * P1 阶段只做事件到达的可视化验证。
- * P2-4 实现真正的消息流、阶段时间线、SQL 折叠块、表格预览与输入框。
- */
-export function ChatPanel({ events, running, onRun, onAbort, onClear }: ChatPanelProps) {
-  const toolbar = (
-    <div className="toolbar">
-      <Button size="small" type="primary" disabled={running} onClick={() => onRun('bar')}>
-        剧本 1 · 柱状图
-      </Button>
-      <Button size="small" disabled={running} onClick={() => onRun('line')}>
-        剧本 2 · 折线图
-      </Button>
-      <Button size="small" disabled={running} onClick={() => onRun('retry')}>
-        剧本 3 · 报错重试
-      </Button>
-      <Button size="small" danger disabled={!running} onClick={onAbort}>
-        中止
-      </Button>
-      <Button size="small" type="text" disabled={running || events.length === 0} onClick={onClear}>
-        清空
-      </Button>
-    </div>
-  )
 
   return (
     <Panel
       title="问答"
-      extra={<span>{running ? '接收中…' : `${events.length} 条事件`}</span>}
-      toolbar={toolbar}
+      extra={<span>{streaming ? '回答中…' : `${messages.length} 条消息`}</span>}
+      footer={<Composer />}
+      scroll={false}
     >
-      {events.length === 0 ? (
-        <div className="placeholder">
-          点击上方任一剧本，验证 Mock SSE 事件是否逐条到达
-          <br />
-          事件应当依次出现，而不是一次性全部涌现
-        </div>
-      ) : (
-        <div className="event-log">
-          {events.map((event, index) => (
-            <div className="event-row" key={index}>
-              <span className={`event-type ${event.type}`}>{event.type}</span>
-              <span className="event-detail">{describe(event)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="message-scroll" ref={bodyRef} onScroll={handleScroll}>
+        {messages.length === 0 ? (
+          <div className="state-block centered">
+            <p className="state-title">用自然语言问一个数据问题</p>
+            <p className="state-desc">
+              系统会自动生成 SQL、执行查询，并在右侧渲染图表。
+              <br />
+              可以点下方的示例问题快速试一次。
+            </p>
+          </div>
+        ) : (
+          messages.map((message) => <MessageItem key={message.id} message={message} />)
+        )}
+      </div>
     </Panel>
   )
 }
