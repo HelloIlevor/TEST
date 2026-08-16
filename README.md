@@ -44,11 +44,24 @@ backend/
 frontend/
   src/
     types/events.ts      事件契约 + zod 运行时校验
+    types/chat.ts        前端消息模型
     api/client.ts        REST 客户端
     api/sse.ts           fetch + ReadableStream 手写 SSE 解析
-    layout/AppLayout.tsx 三列栅格
+    store/applyEvent.ts  事件归约：7 类事件 → 消息状态变更
+    store/useChatStore.ts zustand 状态中枢
+    charts/buildOption.ts 用本地结果集重算 ECharts option
+    layout/AppLayout.tsx 可拖拽三列栅格
     components/          SessionPanel / ChatPanel / ChartPanel
+  e2e/smoke.spec.ts      Playwright 端到端验收
 ```
+
+## 前端架构的一条主线
+
+整个前端只有 `store/applyEvent.ts` 一个文件理解 SSE 事件的语义，它把 7 类事件归约成一个 `AssistantMessage`。UI 组件一律只读这个对象，不碰网络也不碰事件解析。
+
+这样做的直接收益是 Phase 4 从 Mock 切到真实接口时，只要事件契约不变，组件代码一行都不用动；顺带好处是这个归约函数是纯函数，可以脱离浏览器单独测。
+
+图表类型切换同理走本地重算（`charts/buildOption.ts`），不回后端——数据已经在手里，重跑一次 SQL 和 LLM 既慢又费钱，还可能因为模型不确定性返回不一样的结果集。
 
 ## 事件契约
 
@@ -75,12 +88,25 @@ frontend/
 ## 开发阶段
 
 - **Phase 1 基础框架**：骨架、契约冻结、Mock 服务。已完成。
-- **Phase 2 前端 UI**：对着 Mock 开发完整三列交互。
+- **Phase 2 前端 UI**：完整三列交互，全程对着 Mock 开发。已完成。
 - **Phase 3 后端接口**：LLM 接入、demo 数据集、SQL 校验、LangGraph 编排、记忆、真实 SSE。
 - **Phase 4 联调**：切真接口、七类场景回归、稳定性验证。
 
 ## 测试
 
 ```powershell
+# 后端接口与事件契约
 cd backend; .\.venv\Scripts\python.exe -m pytest -q
+
+# 接口回归（需两端都已启动）
+.\backend\.venv\Scripts\python.exe scripts\api_check.py
+
+# 前端端到端（需后端已启动，会自动拉起前端）
+cd frontend; npx playwright test
 ```
+
+端到端用例每条都断言「零 console 报错」。这是 P2-6 的验收项，靠肉眼看控制台不可靠，所以固化成断言。同时有一条整页不出现纵向滚动条的回归断言——这个问题曾因 antd `<App>` 多插一层 div 截断 `height:100%` 继承链而出现过。
+
+## 已知待办
+
+前端产物 2.1 MB（gzip 688 KB），主要来自 echarts 与 antd 全量引入，首屏偏重。留到 Phase 4 交付阶段做按需引入与代码分割。

@@ -19,6 +19,11 @@ node_modules/
 dist/
 *.local
 
+# Playwright 产物：截图与报告每次运行都变，不入库
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/screenshots/
+
 # 编辑器与系统
 .vscode/
 .idea/
